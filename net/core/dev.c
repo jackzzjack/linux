@@ -1707,9 +1707,13 @@ static inline int deliver_skb(struct sk_buff *skb,
 			      struct packet_type *pt_prev,
 			      struct net_device *orig_dev)
 {
+	printk("\tdeliver_skb @ dev.c\n");
+
 	if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC)))
 		return -ENOMEM;
 	atomic_inc(&skb->users);
+
+	// Going to ip_rcv, arp_rcv ...
 	return pt_prev->func(skb, skb->dev, pt_prev, orig_dev);
 }
 
