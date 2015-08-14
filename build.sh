@@ -1,4 +1,4 @@
-make-kpkg -j 3 --initrd --append-to-version=my-very-own-kernel kernel-image kernel-headers
+make-kpkg -j 3 --initrd --rootcmd fakeroot --append-to-version=my-very-own-kernel kernel-image kernel-headers
 
 # Reforence:
 # http://www.cnblogs.com/wwang/archive/2011/01/07/1929486.html
