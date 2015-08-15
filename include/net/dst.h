@@ -452,6 +452,10 @@ static inline int dst_output(struct sk_buff *skb)
 /* Input packet from network to transport.  */
 static inline int dst_input(struct sk_buff *skb)
 {
+	// Going to forwarding, local_deliver
+	// Reference:
+	// http://blog.csdn.net/minghe_uestc/article/details/7819925
+	// http://read.pudn.com/downloads86/ebook/331217/%E7%BD%91%E7%BB%9C%E5%AD%90%E7%B3%BB%E7%BB%9F%E5%9C%A8IP%E5%B1%82%E7%9A%84%E6%94%B6%E5%8F%91%E8%BF%87%E7%A8%8B%E5%89%96%E6%9E%90.pdf
 	return skb_dst(skb)->input(skb);
 }
 

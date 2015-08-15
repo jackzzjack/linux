@@ -189,6 +189,8 @@ bool ip_call_ra_chain(struct sk_buff *skb)
 
 static int ip_local_deliver_finish(struct sk_buff *skb)
 {
+	printk("\t\t\tip_local_deliver_finish @ ip_input.c\n");
+
 	struct net *net = dev_net(skb->dev);
 
 	__skb_pull(skb, skb_network_header_len(skb));
@@ -244,6 +246,8 @@ static int ip_local_deliver_finish(struct sk_buff *skb)
  */
 int ip_local_deliver(struct sk_buff *skb)
 {
+	printk("\t\t\tip_local_deliver @ ip_input.c\n");
+
 	/*
 	 *	Reassemble IP fragments.
 	 */
@@ -311,6 +315,8 @@ EXPORT_SYMBOL(sysctl_ip_early_demux);
 
 static int ip_rcv_finish(struct sk_buff *skb)
 {
+	printk("\t\tip_rcv_finish @ ip_input.c\n");
+
 	const struct iphdr *iph = ip_hdr(skb);
 	struct rtable *rt;
 
