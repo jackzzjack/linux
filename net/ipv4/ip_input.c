@@ -378,6 +378,10 @@ drop:
 
 /*
  * 	Main IP Receive routine.
+ *
+ * 	Why does pskb_may_pull()
+ * 		 ip_hdr() need call twice ?
+ *
  */
 int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
 {
@@ -392,9 +396,11 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 	if (skb->pkt_type == PACKET_OTHERHOST)
 		goto drop;
 
-
+// Stat
 	IP_UPD_PO_STATS_BH(dev_net(dev), IPSTATS_MIB_IN, skb->len);
 
+// Check if someone use skb or not.
+ 	// If someone is in use, clone it for myself.
 	if ((skb = skb_share_check(skb, GFP_ATOMIC)) == NULL) {
 		IP_INC_STATS_BH(dev_net(dev), IPSTATS_MIB_INDISCARDS);
 		goto out;
@@ -403,6 +409,7 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 	if (!pskb_may_pull(skb, sizeof(struct iphdr)))
 		goto inhdr_error;
 
+// Get IP (Layer 3) Header 
 	iph = ip_hdr(skb);
 
 	/*
@@ -416,9 +423,13 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 	 *	4.	Doesn't have a bogus length
 	 */
 
+// ihl (a.k.a Internet Header Length), ihl is always 4 (byte). If ihl is more than 4, means this packet has options.
+ 	// Hence, ihl less than 4 means error pkt.
 	if (iph->ihl < 5 || iph->version != 4)
 		goto inhdr_error;
 
+// ref: http://bbs.chinaunix.net/thread-1948298-1-1.html
+// BUILD_BUG_ON means assert.
 	BUILD_BUG_ON(IPSTATS_MIB_ECT1PKTS != IPSTATS_MIB_NOECTPKTS + INET_ECN_ECT_1);
 	BUILD_BUG_ON(IPSTATS_MIB_ECT0PKTS != IPSTATS_MIB_NOECTPKTS + INET_ECN_ECT_0);
 	BUILD_BUG_ON(IPSTATS_MIB_CEPKTS != IPSTATS_MIB_NOECTPKTS + INET_ECN_CE);
@@ -431,8 +442,10 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 
 	iph = ip_hdr(skb);
 
+// unlikely() ref: http://blog.richliu.com/2007/02/01/428/
+// Using compiler to optimization. unlikely() and likely() talk about expectation.
 	if (unlikely(ip_fast_csum((u8 *)iph, iph->ihl)))
-		goto csum_error;
+		goto csum_error;				// calculate checksum at IP Layer (Layer 3).
 
 	len = ntohs(iph->tot_len);
 	if (skb->len < len) {
@@ -458,6 +471,7 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 	/* Must drop socket now because of tproxy. */
 	skb_orphan(skb);
 
+// Going to PREROUTING Hook
 	return NF_HOOK(NFPROTO_IPV4, NF_INET_PRE_ROUTING, skb, dev, NULL,
 		       ip_rcv_finish);
 

@@ -1458,6 +1458,8 @@ static inline unsigned char *pskb_pull(struct sk_buff *skb, unsigned int len)
 
 static inline int pskb_may_pull(struct sk_buff *skb, unsigned int len)
 {
+// You can ignore likely and unlikely
+// This is directive instruction for compiler optimization.
 	if (likely(len <= skb_headlen(skb)))
 		return 1;
 	if (unlikely(len > skb->len))
