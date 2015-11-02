@@ -52,6 +52,10 @@ static int ip_forward_finish(struct sk_buff *skb)
 	return dst_output(skb);
 }
 
+/*
+ *	This pkt is not for me.
+ *		Forward to other network domain.
+ */
 int ip_forward(struct sk_buff *skb)
 {
 	struct iphdr *iph;	/* Our header */

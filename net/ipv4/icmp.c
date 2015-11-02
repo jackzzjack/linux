@@ -483,6 +483,8 @@ relookup_failed:
 
 void icmp_send(struct sk_buff *skb_in, int type, int code, __be32 info)
 {
+	printk("\ticmp_send @ icmp.c\n");
+
 	struct iphdr *iph;
 	int room;
 	struct icmp_bxm *icmp_param;

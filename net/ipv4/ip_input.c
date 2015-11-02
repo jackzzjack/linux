@@ -313,6 +313,7 @@ drop:
 int sysctl_ip_early_demux __read_mostly = 1;
 EXPORT_SYMBOL(sysctl_ip_early_demux);
 
+// After ip_rcv function
 static int ip_rcv_finish(struct sk_buff *skb)
 {
 	printk("\t\tip_rcv_finish @ ip_input.c\n");
@@ -320,6 +321,9 @@ static int ip_rcv_finish(struct sk_buff *skb)
 	const struct iphdr *iph = ip_hdr(skb);
 	struct rtable *rt;
 
+
+// sysctl_ip_early_demax ref: http://www.tamabc.com/article/8319.html
+// skb_dst means take destination path from cache table.
 	if (sysctl_ip_early_demux && !skb_dst(skb)) {
 		const struct net_protocol *ipprot;
 		int protocol = iph->protocol;
@@ -336,7 +340,11 @@ static int ip_rcv_finish(struct sk_buff *skb)
 	 *	Initialise the virtual path cache for the packet. It describes
 	 *	how the packet travels inside Linux networking.
 	 */
+	/* You DO NOT have any destination @ cache table. */
 	if (!skb_dst(skb)) {
+// This is an IMPORTANT METHOD
+// ref: http://blog.xuite.net/uhonda0618/linuxkernelcode/25268471-linux+ip+packet+flow
+// May mean create a destination on no reference.
 		int err = ip_route_input_noref(skb, iph->daddr, iph->saddr,
 					       iph->tos, skb->dev);
 		if (unlikely(err)) {
@@ -347,10 +355,16 @@ static int ip_rcv_finish(struct sk_buff *skb)
 		}
 	}
 
+// Every Core have st variable, and modify 4 fields right here.
 #ifdef CONFIG_IP_ROUTE_CLASSID
 	if (unlikely(skb_dst(skb)->tclassid)) {
 		struct ip_rt_acct *st = this_cpu_ptr(ip_rt_acct);
 		u32 idx = skb_dst(skb)->tclassid;
+
+// *********************************************************************************
+// |           Source Addr.                 |         Destination Addr.            |
+// |             16 bits                    |              16 bits                 |
+// *********************************************************************************
 		st[idx&0xFF].o_packets++;
 		st[idx&0xFF].o_bytes += skb->len;
 		st[(idx>>16)&0xFF].i_packets++;
@@ -447,6 +461,7 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 	if (unlikely(ip_fast_csum((u8 *)iph, iph->ihl)))
 		goto csum_error;				// calculate checksum at IP Layer (Layer 3).
 
+// Drop if IP header length is incorrent.
 	len = ntohs(iph->tot_len);
 	if (skb->len < len) {
 		IP_INC_STATS_BH(dev_net(dev), IPSTATS_MIB_INTRUNCATEDPKTS);
@@ -481,6 +496,6 @@ inhdr_error:
 	IP_INC_STATS_BH(dev_net(dev), IPSTATS_MIB_INHDRERRORS);
 drop:
 	kfree_skb(skb);
-out:
+out: 
 	return NET_RX_DROP;
 }
