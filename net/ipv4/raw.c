@@ -201,6 +201,7 @@ int raw_local_deliver(struct sk_buff *skb, int protocol)
 	/* If there maybe a raw socket we must check - if not we
 	 * don't care less
 	 */
+// raw_v4_input is the main flow function:w
 	if (raw_sk && !raw_v4_input(skb, ip_hdr(skb), hash))
 		raw_sk = NULL;
 

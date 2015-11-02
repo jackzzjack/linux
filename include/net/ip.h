@@ -244,7 +244,15 @@ void ip_static_sysctl_init(void);
 
 static inline bool ip_is_fragment(const struct iphdr *iph)
 {
+	// frag_off a.k.a flags and fragment offset (frag_off = flags(3bits) + fragment offset(13bits)
+	// ref: https://en.wikipedia.org/wiki/IPv4#Fragment_Offset
 	return (iph->frag_off & htons(IP_MF | IP_OFFSET)) != 0;
+// If frag_off's no.2 bit is 1, means more fragments.(MF)
+// If IP_OFFSRT is on, means offset is enable. a.k.a have fragments.
+//
+// IP_MF:     0010 0000 0000 0000 (0x2000)
+// IP_OFFSET: 0001 1111 1111 1111 (0x1FFF)
+//              ^^
 }
 
 #ifdef CONFIG_INET

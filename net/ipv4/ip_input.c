@@ -202,6 +202,7 @@ static int ip_local_deliver_finish(struct sk_buff *skb)
 		int raw;
 
 	resubmit:
+	// Going to raw_local_deliver
 		raw = raw_local_deliver(skb, protocol);
 
 		ipprot = rcu_dereference(inet_protos[protocol]);

@@ -339,7 +339,8 @@ static int ip_frag_queue(struct ipq *qp, struct sk_buff *skb)
 	int err = -ENOENT;
 	u8 ecn;
 
-	if (qp->q.last_in & INET_FRAG_COMPLETE)
+	if (qp->q.last_in & INET_FRAG_COMPLETE)		// INET_FRAG_COMPLETE is a new alias
+							// COMPLETE is an old alias.	
 		goto err;
 
 	if (!(IPCB(skb)->flags & IPSKB_FRAG_COMPLETE) &&
@@ -350,17 +351,21 @@ static int ip_frag_queue(struct ipq *qp, struct sk_buff *skb)
 	}
 
 	ecn = ip4_frag_ecn(ip_hdr(skb)->tos);
-	offset = ntohs(ip_hdr(skb)->frag_off);
-	flags = offset & ~IP_OFFSET;
-	offset &= IP_OFFSET;
+	offset = ntohs(ip_hdr(skb)->frag_off);		// get flags and fragment offset.
+	flags = offset & ~IP_OFFSET;			// IP_OFFSET = 0x1FFF
+							// offset & ~IP_OFFSET will get flags (not used bit, DF, MF)
+	offset &= IP_OFFSET;				// IP_OFFSET and offset get frag. offset.
 	offset <<= 3;		/* offset is in 8-byte chunks */
+							// offset * 8 equals
+							// offset = offset << 3;
 	ihl = ip_hdrlen(skb);
 
 	/* Determine the position of this fragment. */
-	end = offset + skb->len - ihl;
+	end = offset + skb->len - ihl;			// "skb->len - ihl" a.k.a pkt's payload.
 	err = -EINVAL;
 
 	/* Is this the final fragment? */
+// If this fragment is the last one.
 	if ((flags & IP_MF) == 0) {
 		/* If we already have some bits beyond end
 		 * or have different end, the segment is corrupted.
@@ -657,6 +662,10 @@ int ip_defrag(struct sk_buff *skb, u32 user)
 	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMREQDS);
 
 	/* Start by cleaning up the memory. */
+// Clean LRU linked list.
+// If we have new pkt, the new pkt will add to his pkt linked-list.
+// 	Not only add to his linked-list, we both let these linked-list to the end of the queue.
+// 		So the head of the queue are "Last Recently Used"(a.k.a LRU), and we can clean from here. (Clean the old once to let the memory usage lower than "sysctl_ipfrag_low_thresh".)
 	ip_evictor(net);
 
 	/* Lookup (or create) queue header */
@@ -665,7 +674,8 @@ int ip_defrag(struct sk_buff *skb, u32 user)
 
 		spin_lock(&qp->q.lock);
 
-		ret = ip_frag_queue(qp, skb);
+		ret = ip_frag_queue(qp, skb);	// defrag packet to queue.
+						// @ Chapter 22.2.6
 
 		spin_unlock(&qp->q.lock);
 		ipq_put(qp);
