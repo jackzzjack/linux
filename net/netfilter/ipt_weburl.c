@@ -50,6 +50,11 @@ MODULE_DESCRIPTION("Match URL in HTTP requests, designed for use with Gargoyle w
 
 string_map* compiled_map = NULL;
 
+/*
+ *	Compare two Strings without case-sensitive.
+ *	Return: 0 =====> same
+ *	Return none 0 ====> not equal
+ */
 int strnicmp(const char * cs,const char * ct,size_t count)
 {
 	register signed char __res = 0;
@@ -102,6 +107,8 @@ char *strnistr(const char *s, const char *find, size_t slen)
 
 int do_match_test(unsigned char match_type,  const char* reference, char* query)
 {
+	printk("@ do_match_test: entry\n");
+
 	int matches = 0;
 	struct regexp* r;
 	switch(match_type)
@@ -141,6 +148,8 @@ int do_match_test(unsigned char match_type,  const char* reference, char* query)
 
 int http_match(const struct ipt_weburl_info* info, const unsigned char* packet_data, int packet_length)
 {
+	printk("@ http_match: entry\n");
+
 	int test = 0; 
 	
 	/* first test if we're dealing with a web page request */
@@ -159,7 +168,10 @@ int http_match(const struct ipt_weburl_info* info, const unsigned char* packet_d
 		int prefix_index;
 	
 		/* get path portion of URL */
-		path_start_index = (int)(strstr((char*)packet_data, " ") - (char*)packet_data);
+		path_start_index = (int)(strstr((char*)packet_data, " ") - (char*)packet_data);			// Get start position for path portion, example format:
+																											// GET / HTTP/1.1
+																											// Host: www.google.com
+																											// PATH = '/', host is 'www.google.com'
 		while( packet_data[path_start_index] == ' ')
 		{
 			path_start_index++;
@@ -172,6 +184,7 @@ int http_match(const struct ipt_weburl_info* info, const unsigned char* packet_d
 			memcpy(path, packet_data+path_start_index, path_length);
 			path[ path_length] = '\0';
 		}
+		//*********************************************************************************************************************************************
 		
 		/* get header length */
 		last_header_index = 2;
@@ -191,9 +204,10 @@ int http_match(const struct ipt_weburl_info* info, const unsigned char* packet_d
 				last_header_index++;
 			}
 		}
+		//*********************************************************************************************************************************************
 		
 		/* get host portion of URL */
-		host_match = strnistr( (char*)packet_data, "Host:", last_header_index);
+		host_match = strnistr( (char*)packet_data, "Host:", last_header_index);							// Get start position for host portion
 		if(host_match != NULL)
 		{
 			int host_end_index;
@@ -220,9 +234,9 @@ int http_match(const struct ipt_weburl_info* info, const unsigned char* packet_d
 			
 		}
 	
-		/* printk("host = \"%s\", path =\"%s\"\n", host, path); */
+		printk("host = \"%s\", path =\"%s\"\n", host, path);
 		
-
+		// info data may comes from iptables(userspaceå)
 		switch(info->match_part)
 		{
 			case WEBURL_DOMAIN_PART:
@@ -306,6 +320,7 @@ int http_match(const struct ipt_weburl_info* info, const unsigned char* packet_d
 
 static bool match(const struct sk_buff *skb, struct xt_action_param *par)
 {
+	printk("@ match: entry\n");
 
 	const struct ipt_weburl_info *info = (const struct ipt_weburl_info*)(par->matchinfo);
 
@@ -316,7 +331,7 @@ static bool match(const struct sk_buff *skb, struct xt_action_param *par)
 	/* linearize skb if necessary */
 	struct sk_buff *linear_skb;
 	int skb_copied;
-	if(skb_is_nonlinear(skb))
+	if(skb_is_nonlinear(skb))				// ¤°»ò¬O linear ??
 	{
 		linear_skb = skb_copy(skb, GFP_ATOMIC);
 		skb_copied = 1;
@@ -330,21 +345,28 @@ static bool match(const struct sk_buff *skb, struct xt_action_param *par)
 	
 
 	/* ignore packets that are not TCP */
-	iph = (struct iphdr*)(skb_network_header(skb));
+	iph = (struct iphdr*)(skb_network_header(skb));					// Get socket_buffer header pointer
 	if(iph->protocol == IPPROTO_TCP)
 	{
 		/* get payload */
-		struct tcphdr* tcp_hdr		= (struct tcphdr*)( ((unsigned char*)iph) + (iph->ihl*4) );
-		unsigned short payload_offset 	= (tcp_hdr->doff*4) + (iph->ihl*4);
-		unsigned char* payload 		= ((unsigned char*)iph) + payload_offset;
-		unsigned short payload_length	= ntohs(iph->tot_len) - payload_offset;
+		struct tcphdr* tcp_hdr		= (struct tcphdr*)( ((unsigned char*)iph) + (iph->ihl*4) );			// Get TCP header pointer, from start move to offset through length*4
+																												//  ------  <----- *iph
+																												//  |    |
+																												//  |    |
+																												//  |    |  <----- *tcp_hdr (iph + header_length * 4)
+																												//  |    |
+																												//  |    |
+																												//  ------
+		unsigned short payload_offset 	= (tcp_hdr->doff*4) + (iph->ihl*4);						// doff a.k.a data offset
+		unsigned char* payload 		= ((unsigned char*)iph) + payload_offset;				// TCP: TCP header ( 20 ~ 60 byte, including maxmium options field is 40 byte), depends on data offset field.
+		unsigned short payload_length	= ntohs(iph->tot_len) - payload_offset;					// IPv4 total length minus TCP header offset equal payload length
 
 	
 
 		/* if payload length <= 10 bytes don't bother doing a check, otherwise check for match */
-		if(payload_length > 10)
+		if(payload_length > 10)																			// "GET http://", so at lease 10 character
 		{
-			test = http_match(info, payload, payload_length);
+			test = http_match(info, payload, payload_length);			// Going to http protocol match
 		}
 	}
 	
@@ -362,6 +384,8 @@ static bool match(const struct sk_buff *skb, struct xt_action_param *par)
 
 static int checkentry(const struct xt_mtchk_param *par)
 {
+	printk("@ checkentry: entry\n");
+
 	return 0;
 }
 
@@ -369,8 +393,8 @@ static int checkentry(const struct xt_mtchk_param *par)
 static struct xt_match weburl_match  __read_mostly  = 
 {
 	.name		= "weburl",
-	.match		= &match,
-	.family		= AF_INET,
+	.match		= &match,								// hook ¨ì¹ïÀ³ªº function
+	.family		= AF_INET,								// IP Protocol v 4
 	.matchsize	= sizeof(struct ipt_weburl_info),
 	.checkentry	= &checkentry,
 	.me		= THIS_MODULE,
@@ -379,13 +403,13 @@ static struct xt_match weburl_match  __read_mostly  =
 static int __init init(void)
 {
 	compiled_map = NULL;
-	return xt_register_match(&weburl_match);
+	return xt_register_match(&weburl_match);		// ³o¬O¥Î¨Ó hook ¨ì netfilter
 
 }
 
 static void __exit fini(void)
 {
-	xt_unregister_match(&weburl_match);
+	xt_unregister_match(&weburl_match);			// ³o¬O¥Î¨Ó unhook ¨ì netfilter
 	if(compiled_map != NULL)
 	{
 		unsigned long num_destroyed;
