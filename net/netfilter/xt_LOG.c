@@ -40,7 +40,7 @@ static struct nf_loginfo default_loginfo = {
 };
 
 static int dump_udp_header(struct sbuff *m, const struct sk_buff *skb,
-			   u8 proto, int fragment, unsigned int offset)
+			   u8 proto, int fragment, unsigned int offset, const struct nf_loginfo *info)
 {
 	struct udphdr _udph;
 	const struct udphdr *uh;
@@ -63,8 +63,10 @@ static int dump_udp_header(struct sbuff *m, const struct sk_buff *skb,
 	}
 
 	/* Max length: 20 "SPT=65535 DPT=65535 " */
-	sb_add(m, "SPT=%u DPT=%u LEN=%u ", ntohs(uh->source), ntohs(uh->dest),
-		ntohs(uh->len));
+	sb_add(m, "SPT=%u DPT=%u ", ntohs(uh->source), ntohs(uh->dest));
+    if (info->u.log.logflags != XT_LOG_SIMPLE) {
+        sb_add(m, "LEN=%u ", ntohs(uh->len));
+    }
 
 out:
 	return 0;
@@ -72,7 +74,7 @@ out:
 
 static int dump_tcp_header(struct sbuff *m, const struct sk_buff *skb,
 			   u8 proto, int fragment, unsigned int offset,
-			   unsigned int logflags)
+			   unsigned int logflags, const struct nf_loginfo *info)
 {
 	struct tcphdr _tcph;
 	const struct tcphdr *th;
@@ -93,35 +95,38 @@ static int dump_tcp_header(struct sbuff *m, const struct sk_buff *skb,
 	/* Max length: 20 "SPT=65535 DPT=65535 " */
 	sb_add(m, "SPT=%u DPT=%u ", ntohs(th->source), ntohs(th->dest));
 	/* Max length: 30 "SEQ=4294967295 ACK=4294967295 " */
-	if (logflags & XT_LOG_TCPSEQ)
+	if ((logflags & XT_LOG_TCPSEQ) && (info->u.log.logflags != XT_LOG_SIMPLE)) {
 		sb_add(m, "SEQ=%u ACK=%u ", ntohl(th->seq), ntohl(th->ack_seq));
+    }
 
-	/* Max length: 13 "WINDOW=65535 " */
-	sb_add(m, "WINDOW=%u ", ntohs(th->window));
-	/* Max length: 9 "RES=0x3C " */
-	sb_add(m, "RES=0x%02x ", (u_int8_t)(ntohl(tcp_flag_word(th) &
-					    TCP_RESERVED_BITS) >> 22));
-	/* Max length: 32 "CWR ECE URG ACK PSH RST SYN FIN " */
-	if (th->cwr)
-		sb_add(m, "CWR ");
-	if (th->ece)
-		sb_add(m, "ECE ");
-	if (th->urg)
-		sb_add(m, "URG ");
-	if (th->ack)
-		sb_add(m, "ACK ");
-	if (th->psh)
-		sb_add(m, "PSH ");
-	if (th->rst)
-		sb_add(m, "RST ");
-	if (th->syn)
-		sb_add(m, "SYN ");
-	if (th->fin)
-		sb_add(m, "FIN ");
-	/* Max length: 11 "URGP=65535 " */
-	sb_add(m, "URGP=%u ", ntohs(th->urg_ptr));
+    if (info->u.log.logflags != XT_LOG_SIMPLE) {
+    	/* Max length: 13 "WINDOW=65535 " */
+    	sb_add(m, "WINDOW=%u ", ntohs(th->window));
+    	/* Max length: 9 "RES=0x3C " */
+    	sb_add(m, "RES=0x%02x ", (u_int8_t)(ntohl(tcp_flag_word(th) &
+    					    TCP_RESERVED_BITS) >> 22));
+    	/* Max length: 32 "CWR ECE URG ACK PSH RST SYN FIN " */
+    	if (th->cwr)
+    		sb_add(m, "CWR ");
+    	if (th->ece)
+    		sb_add(m, "ECE ");
+    	if (th->urg)
+    		sb_add(m, "URG ");
+    	if (th->ack)
+    		sb_add(m, "ACK ");
+    	if (th->psh)
+    		sb_add(m, "PSH ");
+    	if (th->rst)
+    		sb_add(m, "RST ");
+    	if (th->syn)
+    		sb_add(m, "SYN ");
+    	if (th->fin)
+    		sb_add(m, "FIN ");
+    	/* Max length: 11 "URGP=65535 " */
+    	sb_add(m, "URGP=%u ", ntohs(th->urg_ptr));
+    }
 
-	if ((logflags & XT_LOG_TCPOPT) && th->doff*4 > sizeof(struct tcphdr)) {
+	if ((logflags & XT_LOG_TCPOPT) && th->doff*4 > sizeof(struct tcphdr) && (info->u.log.logflags != XT_LOG_SIMPLE)) {
 		u_int8_t _opt[60 - sizeof(struct tcphdr)];
 		const u_int8_t *op;
 		unsigned int i;
@@ -134,14 +139,14 @@ static int dump_tcp_header(struct sbuff *m, const struct sk_buff *skb,
 			return 1;
 		}
 
-		/* Max length: 127 "OPT (" 15*4*2chars ") " */
-		sb_add(m, "OPT (");
-		for (i = 0; i < optsize; i++)
-			sb_add(m, "%02X", op[i]);
+        /* Max length: 127 "OPT (" 15*4*2chars ") " */
+    	sb_add(m, "OPT (");
+    	for (i = 0; i < optsize; i++)
+    			sb_add(m, "%02X", op[i]);
 
-		sb_add(m, ") ");
-	}
-
+    	sb_add(m, ") ");
+    }
+    
 	return 0;
 }
 
@@ -188,24 +193,28 @@ static void dump_ipv4_packet(struct sbuff *m,
 	       &ih->saddr, &ih->daddr);
 
 	/* Max length: 46 "LEN=65535 TOS=0xFF PREC=0xFF TTL=255 ID=65535 " */
-	sb_add(m, "LEN=%u TOS=0x%02X PREC=0x%02X TTL=%u ID=%u ",
-	       ntohs(ih->tot_len), ih->tos & IPTOS_TOS_MASK,
-	       ih->tos & IPTOS_PREC_MASK, ih->ttl, ntohs(ih->id));
+    if (info->u.log.logflags != XT_LOG_SIMPLE) {
+	    sb_add(m, "LEN=%u TOS=0x%02X PREC=0x%02X TTL=%u ID=%u ",
+	        ntohs(ih->tot_len), ih->tos & IPTOS_TOS_MASK,
+	        ih->tos & IPTOS_PREC_MASK, ih->ttl, ntohs(ih->id));
+    }
 
 	/* Max length: 6 "CE DF MF " */
-	if (ntohs(ih->frag_off) & IP_CE)
-		sb_add(m, "CE ");
-	if (ntohs(ih->frag_off) & IP_DF)
-		sb_add(m, "DF ");
-	if (ntohs(ih->frag_off) & IP_MF)
-		sb_add(m, "MF ");
+    if (info->u.log.logflags != XT_LOG_SIMPLE) {
+    	if (ntohs(ih->frag_off) & IP_CE)
+    		sb_add(m, "CE ");
+    	if (ntohs(ih->frag_off) & IP_DF)
+    		sb_add(m, "DF ");
+    	if (ntohs(ih->frag_off) & IP_MF)
+    		sb_add(m, "MF ");
+    }
 
 	/* Max length: 11 "FRAG:65535 " */
 	if (ntohs(ih->frag_off) & IP_OFFSET)
 		sb_add(m, "FRAG:%u ", ntohs(ih->frag_off) & IP_OFFSET);
 
 	if ((logflags & XT_LOG_IPOPT) &&
-	    ih->ihl * 4 > sizeof(struct iphdr)) {
+	    ih->ihl * 4 > sizeof(struct iphdr) && (info->u.log.logflags!= XT_LOG_SIMPLE)) {
 		const unsigned char *op;
 		unsigned char _opt[4 * 15 - sizeof(struct iphdr)];
 		unsigned int i, optsize;
@@ -229,14 +238,14 @@ static void dump_ipv4_packet(struct sbuff *m,
 	case IPPROTO_TCP:
 		if (dump_tcp_header(m, skb, ih->protocol,
 				    ntohs(ih->frag_off) & IP_OFFSET,
-				    iphoff+ih->ihl*4, logflags))
+				    iphoff+ih->ihl*4, logflags, info))
 			return;
 		break;
 	case IPPROTO_UDP:
 	case IPPROTO_UDPLITE:
 		if (dump_udp_header(m, skb, ih->protocol,
 				    ntohs(ih->frag_off) & IP_OFFSET,
-				    iphoff+ih->ihl*4))
+				    iphoff+ih->ihl*4, info))
 			return;
 		break;
 	case IPPROTO_ICMP: {
@@ -287,40 +296,43 @@ static void dump_ipv4_packet(struct sbuff *m,
 			break;
 		}
 
-		switch (ich->type) {
-		case ICMP_ECHOREPLY:
-		case ICMP_ECHO:
-			/* Max length: 19 "ID=65535 SEQ=65535 " */
-			sb_add(m, "ID=%u SEQ=%u ",
-			       ntohs(ich->un.echo.id),
-			       ntohs(ich->un.echo.sequence));
-			break;
+        if (info->u.log.logflags != XT_LOG_SIMPLE) {
+    		switch (ich->type) {
+    		case ICMP_ECHOREPLY:
+    		case ICMP_ECHO:
+    			/* Max length: 19 "ID=65535 SEQ=65535 " */
+    			sb_add(m, "ID=%u SEQ=%u ",
+    			       ntohs(ich->un.echo.id),
+    			       ntohs(ich->un.echo.sequence));
+    			break;
 
-		case ICMP_PARAMETERPROB:
-			/* Max length: 14 "PARAMETER=255 " */
-			sb_add(m, "PARAMETER=%u ",
-			       ntohl(ich->un.gateway) >> 24);
-			break;
-		case ICMP_REDIRECT:
-			/* Max length: 24 "GATEWAY=255.255.255.255 " */
-			sb_add(m, "GATEWAY=%pI4 ", &ich->un.gateway);
-			/* Fall through */
-		case ICMP_DEST_UNREACH:
-		case ICMP_SOURCE_QUENCH:
-		case ICMP_TIME_EXCEEDED:
-			/* Max length: 3+maxlen */
-			if (!iphoff) { /* Only recurse once. */
-				sb_add(m, "[");
-				dump_ipv4_packet(m, info, skb,
-					    iphoff + ih->ihl*4+sizeof(_icmph));
-				sb_add(m, "] ");
-			}
+    		case ICMP_PARAMETERPROB:
+    			/* Max length: 14 "PARAMETER=255 " */
+    			sb_add(m, "PARAMETER=%u ",
+    			       ntohl(ich->un.gateway) >> 24);
+    			break;
+    		case ICMP_REDIRECT:
+    			/* Max length: 24 "GATEWAY=255.255.255.255 " */
+    			sb_add(m, "GATEWAY=%pI4 ", &ich->un.gateway);
+    			/* Fall through */
+    		case ICMP_DEST_UNREACH:
+    		case ICMP_SOURCE_QUENCH:
+    		case ICMP_TIME_EXCEEDED:
+    			/* Max length: 3+maxlen */
+    			if (!iphoff) { /* Only recurse once. */
+    				sb_add(m, "[");
+    				dump_ipv4_packet(m, info, skb,
+    					    iphoff + ih->ihl*4+sizeof(_icmph));
+    				sb_add(m, "] ");
+    			}
 
-			/* Max length: 10 "MTU=65535 " */
-			if (ich->type == ICMP_DEST_UNREACH &&
-			    ich->code == ICMP_FRAG_NEEDED)
-				sb_add(m, "MTU=%u ", ntohs(ich->un.frag.mtu));
-		}
+    			/* Max length: 10 "MTU=65535 " */
+    			if (ich->type == ICMP_DEST_UNREACH &&
+    			    ich->code == ICMP_FRAG_NEEDED)
+    				sb_add(m, "MTU=%u ", ntohs(ich->un.frag.mtu));
+    		}
+        }
+        
 		break;
 	}
 	/* Max Length */
@@ -376,12 +388,14 @@ static void dump_ipv4_packet(struct sbuff *m,
 	}
 
 	/* Max length: 15 "UID=4294967295 " */
-	if ((logflags & XT_LOG_UID) && !iphoff)
+	if ((logflags & XT_LOG_UID) && !iphoff && (info->u.log.logflags != XT_LOG_SIMPLE))
 		dump_sk_uid_gid(m, skb->sk);
 
 	/* Max length: 16 "MARK=0xFFFFFFFF " */
-	if (!iphoff && skb->mark)
-		sb_add(m, "MARK=0x%x ", skb->mark);
+    if (info->u.log.logflags != XT_LOG_SIMPLE) {
+    	if (!iphoff && skb->mark)
+    		sb_add(m, "MARK=0x%x ", skb->mark);
+    }
 
 	/* Proto    Max log string length */
 	/* IP:      40+46+6+11+127 = 230 */
@@ -487,6 +501,8 @@ ipt_log_packet(struct net *net,
 		loginfo = &default_loginfo;
 
 	log_packet_common(m, pf, hooknum, skb, in, out, loginfo, prefix);
+
+    // printk("loginfo->u->log->logflags: %d\n", loginfo->u.log.logflags);
 
 	if (in != NULL)
 		dump_ipv4_mac_header(m, loginfo, skb);
@@ -665,12 +681,12 @@ static void dump_ipv6_packet(struct sbuff *m,
 	switch (currenthdr) {
 	case IPPROTO_TCP:
 		if (dump_tcp_header(m, skb, currenthdr, fragment, ptr,
-		    logflags))
+		    logflags, info))
 			return;
 		break;
 	case IPPROTO_UDP:
 	case IPPROTO_UDPLITE:
-		if (dump_udp_header(m, skb, currenthdr, fragment, ptr))
+		if (dump_udp_header(m, skb, currenthdr, fragment, ptr, info))
 			return;
 		break;
 	case IPPROTO_ICMPV6: {
@@ -930,6 +946,7 @@ static struct pernet_operations log_net_ops = {
 	.exit = log_net_exit,
 };
 
+// Entry Point
 static int __init log_tg_init(void)
 {
 	int ret;
@@ -938,6 +955,7 @@ static int __init log_tg_init(void)
 	if (ret < 0)
 		goto err_pernet;
 
+// Hook this (LOG) module to target port
 	ret = xt_register_targets(log_tg_regs, ARRAY_SIZE(log_tg_regs));
 	if (ret < 0)
 		goto err_target;
@@ -954,6 +972,7 @@ err_pernet:
 	return ret;
 }
 
+// Exit Point
 static void __exit log_tg_exit(void)
 {
 	unregister_pernet_subsys(&log_net_ops);
@@ -970,6 +989,7 @@ module_exit(log_tg_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Netfilter Core Team <coreteam@netfilter.org>");
 MODULE_AUTHOR("Jan Rekorajski <baggins@pld.org.pl>");
+MODULE_AUTHOR("Yu-Ting, Kao <jackzzjack@gmail.com> Edited");
 MODULE_DESCRIPTION("Xtables: IPv4/IPv6 packet logging");
 MODULE_ALIAS("ipt_LOG");
 MODULE_ALIAS("ip6t_LOG");

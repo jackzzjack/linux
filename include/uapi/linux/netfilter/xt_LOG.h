@@ -9,6 +9,7 @@
 #define XT_LOG_NFLOG		0x10	/* Unsupported, don't reuse */
 #define XT_LOG_MACDECODE	0x20	/* Decode MAC header */
 #define XT_LOG_MASK		0x2f
+#define XT_LOG_SIMPLE   0xff
 
 struct xt_log_info {
 	unsigned char level;
